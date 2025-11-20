@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>FE Signature Function File</title>
+  <!-- Office.js must be loaded -->
+  <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+
+  <!-- IMPORTANT: The filename and case here MUST match the file you upload -->
+  <script src="https://3yw31v.sharepoint.com/sites/Signature/Shared%20Documents/FunctionFile.js"></script>
+</head>
+<body>
+<script>
+  Office.onReady(() => {
+    // Matches FunctionName in the manifest
+    window.onNewMessageCompose = async (event) => {
+      try {
+        if (!window.FESignature || !window.FESignature.insertSignatureOnCompose) {
+          throw new Error("FESignature.insertSignatureOnCompose not found.");
+        }
+        await window.FESignature.insertSignatureOnCompose();
+        event.completed();
+      } catch (e) {
+        console.error("onNewMessageCompose error:", e);
+        event.completed({ error: e?.message || "Failed to insert signature." });
+      }
+    };
+  });
+</script>
+</body>
+</html>

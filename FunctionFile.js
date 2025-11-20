@@ -1,9 +1,8 @@
-// Optional: basic init hook (not required for event-based, but harmless)
+// Optional: basic init hook
 Office.initialize = function () {};
 
-// Simple namespace for your signature logic
+// Namespace for your signature logic
 window.FESignature = (() => {
-  // Build a basic signature; swap this with your branded HTML as needed.
   function buildSignatureHtml() {
     return `
       <!-- FE_SIGNATURE_MARKER -->
@@ -12,7 +11,7 @@ window.FESignature = (() => {
           <strong>FirstEnergy</strong><br/>
           Employee Name | Title<br/>
           Department<br/>
-          https://www.firstenergycorp.comfirstenergycorp.com</a><br/>
+          https://www.firstenergycorp.com<br/>
           <span>Email: user@firstenergycorp.com</span>
         </td></tr>
       </table>
@@ -49,7 +48,7 @@ window.FESignature = (() => {
     if (currentHtml.includes(marker)) {
       // Replace anything after the marker with a fresh signature block
       newHtml = currentHtml.replace(
-        new RegExp(`${marker}[\\|\\n|\\r|\\s|\\S]*$`, "m"),
+        new RegExp(`${marker}[\\s\\S]*$`, "m"),
         `${marker}\n<div>${signatureHtml}</div>\n`
       );
     } else {
@@ -73,3 +72,4 @@ window.FESignature = (() => {
   }
 
   return { insertSignatureOnCompose, statusUpdate };
+})();

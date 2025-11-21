@@ -1,19 +1,25 @@
+console.log('FunctionFile.js loaded');
+
 async function insertSignature(event) {
+  console.log('insertSignature called');
   try {
     const sigHtml = buildSignatureHtml();
+    console.log('Signature HTML prepared');
 
     Office.context.mailbox.item.body.prependAsync(
       sigHtml,
       { coercionType: Office.CoercionType.Html },
       (res) => {
         if (res.status !== Office.AsyncResultStatus.Succeeded) {
-          console.error("prependAsync failed:", res.error);
+          console.error('prependAsync failed:', res.error);
+        } else {
+          console.log('Signature inserted successfully');
         }
-        event.completed(); // Always complete so the banner clears
+        event.completed();
       }
     );
   } catch (e) {
-    console.error("insertSignature error:", e);
+    console.error('insertSignature error:', e);
     event.completed();
   }
 }
@@ -26,7 +32,7 @@ function buildSignatureHtml() {
         <strong>FirstEnergy</strong><br/>
         Employee Name | Title<br/>
         Department<br/>
-        https://www.firstenergycorp.comwww.firstenergycorp.com</a><br/>
+        <a href="https://www.firstenergycorp.com">www.firstenergycorp.com</a><br/>
         <span>Email: user@firstenergycorp.com</span>
       </td></tr>
     </table>

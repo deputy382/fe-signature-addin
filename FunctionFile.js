@@ -1,6 +1,7 @@
 console.log('FunctionFile.js loaded');
 
-async function insertSignature(event) {
+// Expose the function globally for ExecuteFunction in the manifest
+window.insertSignature = async function(event) {
   console.log('insertSignature called');
   try {
     const sigHtml = buildSignatureHtml();
@@ -15,6 +16,7 @@ async function insertSignature(event) {
         } else {
           console.log('Signature inserted successfully');
         }
+        // Always complete so the banner clears
         event.completed();
       }
     );
@@ -22,7 +24,7 @@ async function insertSignature(event) {
     console.error('insertSignature error:', e);
     event.completed();
   }
-}
+};
 
 function buildSignatureHtml() {
   return `
@@ -32,7 +34,7 @@ function buildSignatureHtml() {
         <strong>FirstEnergy</strong><br/>
         Employee Name | Title<br/>
         Department<br/>
-        <a href="https://www.firstenergycorp.com">www.firstenergycorp.com</a><br/>
+        https://www.firstenergycorp.comwww.firstenergycorp.com</a><br/>
         <span>Email: user@firstenergycorp.com</span>
       </td></tr>
     </table>

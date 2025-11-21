@@ -73,3 +73,16 @@ window.FESignature = (() => {
 
   return { insertSignatureOnCompose, statusUpdate };
 })();
+
+// Expose the function for Outlook event-based activation
+Office.onReady(() => {
+  window.insertSignature = async function(event) {
+    try {
+      await window.FESignature.insertSignatureOnCompose();
+      event.completed();
+    } catch (e) {
+      console.error("insertSignature error:", e);
+      event.completed({ error: e?.message || "Failed to insert signature." });
+    }
+  };
+});

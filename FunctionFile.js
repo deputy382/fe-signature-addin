@@ -1,27 +1,26 @@
-Office.onReady(() => {
-  Office.actions.associate("insertSignature", insertSignature);
-});
-
+// For ExecuteFunction, a global function name must match the manifest's FunctionName.
 async function insertSignature(event) {
   try {
-    const currentHtml = await getBodyHtmlAsync();
-    const signatureHtml = buildSignatureHtml();
-    const marker = "<!-- FE_SIGNATURE_MARKER -->";
+    const sigHtml = buildSignatureHtml();
 
-    let newHtml;
-    if (currentHtml.includes(marker)) {
-      newHtml = currentHtml.replace(new RegExp(`${marker}[\s\S]*$`, "m"), `${marker}
-${signatureHtml}
-`);
-    } else {
-      newHtml = `${currentHtml}
-${marker}
-${signatureHtml}
-`;
-    }
+    Office.context.mailbox.item.body.getAsync(Office.CoercionType.Html, (getRes) => {
+      if (getRes.status !== Office.AsyncResultStatus.Succeeded) {
+        event.completed();
+        return;
+      }
 
-    await setBodyHtmlAsync(newHtml);
-    event.completed();
+      const currentHtml = getRes.value || "";
+      const marker = "<!-- FE_SIGNATURE_MARKER -->";
+      const newHtml = currentHtml.includes(marker)
+        ? currentHtml.replace(new RegExp(`${marker}[\\s\\S]*$`, "m"), `${marker}\n${sigHtml}\n`)
+        : `${currentHtml}\n${marker}\n${sigHtml}\n`;
+
+      Office.context.mailbox.item.body.setAsync(
+        newHtml,
+        { coercionType: Office.CoercionType.Html },
+        () => event.completed()
+      );
+    });
   } catch (e) {
     console.error("insertSignature error:", e);
     event.completed();
@@ -36,28 +35,9 @@ function buildSignatureHtml() {
         <strong>FirstEnergy</strong><br/>
         Employee Name | Title<br/>
         Department<br/>
-        <a href="https://www.firstenergycorp.com">www.firstenergycorp.com</a><br/>
+        https://www.firstenergycorp.comwww.firstenergycorp.com</a><br/>
         <span>Email: user@firstenergycorp.com</span>
       </td></tr>
     </table>
   `;
-}
-
-function setBodyHtmlAsync(html) {
-  return new Promise((resolve, reject) => {
-    Office.context.mailbox.item.body.setAsync(
-      html,
-      { coercionType: Office.CoercionType.Html },
-      (res) => res.status === Office.AsyncResultStatus.Succeeded ? resolve() : reject(res.error)
-    );
-  });
-}
-
-function getBodyHtmlAsync() {
-  return new Promise((resolve, reject) => {
-    Office.context.mailbox.item.body.getAsync(
-      Office.CoercionType.Html,
-      (res) => res.status === Office.AsyncResultStatus.Succeeded ? resolve(res.value || "") : reject(res.error)
-    );
-  });
 }

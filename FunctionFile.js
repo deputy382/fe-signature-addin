@@ -1,26 +1,17 @@
-// For ExecuteFunction, a global function name must match the manifest's FunctionName.
 async function insertSignature(event) {
   try {
     const sigHtml = buildSignatureHtml();
 
-    Office.context.mailbox.item.body.getAsync(Office.CoercionType.Html, (getRes) => {
-      if (getRes.status !== Office.AsyncResultStatus.Succeeded) {
-        event.completed();
-        return;
+    Office.context.mailbox.item.body.prependAsync(
+      sigHtml,
+      { coercionType: Office.CoercionType.Html },
+      (res) => {
+        if (res.status !== Office.AsyncResultStatus.Succeeded) {
+          console.error("prependAsync failed:", res.error);
+        }
+        event.completed(); // Always complete so the banner clears
       }
-
-      const currentHtml = getRes.value || "";
-      const marker = "<!-- FE_SIGNATURE_MARKER -->";
-      const newHtml = currentHtml.includes(marker)
-        ? currentHtml.replace(new RegExp(`${marker}[\\s\\S]*$`, "m"), `${marker}\n${sigHtml}\n`)
-        : `${currentHtml}\n${marker}\n${sigHtml}\n`;
-
-      Office.context.mailbox.item.body.setAsync(
-        newHtml,
-        { coercionType: Office.CoercionType.Html },
-        () => event.completed()
-      );
-    });
+    );
   } catch (e) {
     console.error("insertSignature error:", e);
     event.completed();

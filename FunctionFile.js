@@ -11,11 +11,16 @@ async function insertSignature(event) {
     let newHtml;
     if (currentHtml.includes(marker)) {
       newHtml = currentHtml.replace(
-        new RegExp(`${marker}[\\s\\S]*$`, "m"),
-        `${marker}\n${signatureHtml}\n`
+        new RegExp(`${marker}[\s\S]*$`, "m"),
+        `${marker}
+${signatureHtml}
+`
       );
     } else {
-      newHtml = `${currentHtml}\n${marker}\n${signatureHtml}\n`;
+      newHtml = `${currentHtml}
+${marker}
+${signatureHtml}
+`;
     }
 
     await setBodyHtmlAsync(newHtml);
@@ -34,7 +39,7 @@ function buildSignatureHtml() {
         <strong>FirstEnergy</strong><br/>
         Employee Name | Title<br/>
         Department<br/>
-        https://www.firstenergycorp.comwww.firstenergycorp.com</a><br/>
+        <a href="https://www.firstenergycorp.com">www.firstenergycorp.com</a><br/>
         <span>Email: user@firstenergycorp.com</span>
       </td></tr>
     </table>
@@ -55,7 +60,9 @@ function getBodyHtmlAsync() {
   return new Promise((resolve, reject) => {
     Office.context.mailbox.item.body.getAsync(
       Office.CoercionType.Html,
-      (res) => res.status === Office.AsyncResultStatus.Succeeded ? resolve(res.value || "") : reject(res.error)
+      (res) => res.status === Office.AsyncResultStatus.Succeeded
+        ? resolve(res.value || "")
+        : reject(res.error)
     );
   });
 }

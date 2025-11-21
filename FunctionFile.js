@@ -34,7 +34,7 @@ function buildSignatureHtml() {
         <strong>FirstEnergy</strong><br/>
         Employee Name | Title<br/>
         Department<br/>
-        <a href="https://www.firstenergycorpirstenergycorp.com</a><br/>
+        https://www.firstenergycorp.comwww.firstenergycorp.com</a><br/>
         <span>Email: user@firstenergycorp.com</span>
       </td></tr>
     </table>

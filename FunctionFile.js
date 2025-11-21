@@ -10,12 +10,9 @@ async function insertSignature(event) {
 
     let newHtml;
     if (currentHtml.includes(marker)) {
-      newHtml = currentHtml.replace(
-        new RegExp(`${marker}[\s\S]*$`, "m"),
-        `${marker}
+      newHtml = currentHtml.replace(new RegExp(`${marker}[\s\S]*$`, "m"), `${marker}
 ${signatureHtml}
-`
-      );
+`);
     } else {
       newHtml = `${currentHtml}
 ${marker}
@@ -27,7 +24,7 @@ ${signatureHtml}
     event.completed();
   } catch (e) {
     console.error("insertSignature error:", e);
-    event.completed({ error: e.message || "Failed to insert signature." });
+    event.completed();
   }
 }
 
@@ -60,9 +57,7 @@ function getBodyHtmlAsync() {
   return new Promise((resolve, reject) => {
     Office.context.mailbox.item.body.getAsync(
       Office.CoercionType.Html,
-      (res) => res.status === Office.AsyncResultStatus.Succeeded
-        ? resolve(res.value || "")
-        : reject(res.error)
+      (res) => res.status === Office.AsyncResultStatus.Succeeded ? resolve(res.value || "") : reject(res.error)
     );
   });
 }

@@ -1,8 +1,8 @@
 console.log('FunctionFile.js loaded');
 
+
 Office.onReady(() => {
-  // Global handler for autorun (LaunchEvent)
-  window.autoInsertSignature = async function(event) {
+  window.insertSignature = async function(event) {
     Office.context.mailbox.item.body.getAsync(Office.CoercionType.Html, function(result) {
       if (result.status === Office.AsyncResultStatus.Succeeded) {
         const bodyHtml = result.value;

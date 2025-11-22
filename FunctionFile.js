@@ -12,7 +12,7 @@ window.insertSignature = async function(event) {
       { coercionType: Office.CoercionType.Html },
       (res) => {
         if (res.status !== Office.AsyncResultStatus.Succeeded) {
-          console.error('prependAsync failed:', res.error);
+          console.error('prependAsync failed:', res.error?.message || res.error || res);
         } else {
           console.log('Signature inserted successfully');
         }
@@ -21,12 +21,13 @@ window.insertSignature = async function(event) {
       }
     );
   } catch (e) {
-    console.error('insertSignature error:', e);
+    console.error('insertSignature error:', e?.message || e);
     event.completed();
   }
 };
 
 function buildSignatureHtml() {
+  // IMPORTANT: real HTML tags here (no &lt; / &gt; entities)
   return `
     <!-- FE_SIGNATURE_MARKER -->
     <table style="font-family:Segoe UI, Arial; font-size:12px; line-height:1.35;">

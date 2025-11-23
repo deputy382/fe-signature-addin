@@ -1,8 +1,8 @@
 /*
- * FunctionFile.js — FE signature (standard placement), button + event with distinct names
- * - New compose: append at bottom
+ * FunctionFile.js — FE signature (standard placement)
+ * - New compose: Outlook-managed bottom placement via setSignatureAsync
  * - Reply/Forward: insert just below the reply/forward header
- * - Prevents duplicates via marker
+ * - Works for ribbon ExecuteFunction (insertSignature) and LaunchEvent (onNewCompose)
  */
 
 console.log('FunctionFile.js loaded');
@@ -11,6 +11,42 @@ var MARKER = 'FE_SIGNATURE_MARKER';
 
 /* ========================= Helpers ========================= */
 
+/** Wait until the body APIs return a string (up to maxMs). */
+function waitForBodyReady(maxMs) {
+  return new Promise(function (resolve) {
+    var start = performance.now();
+    (function check() {
+      Office.context.mailbox.item.body.getAsync(Office.CoercionType.Html, function (res) {
+        if (res.status === Office.AsyncResultStatus.Succeeded && typeof res.value === 'string') {
+          return resolve();
+        }
+        if ((performance.now() - start) >= maxMs) return resolve(); // continue anyway
+        setTimeout(check, 50);
+      });
+    })();
+  });
+}
+
+/** Get compose type as a Promise ('NewMail' | 'Reply' | 'Forward'). */
+function getComposeTypeAsync() {
+  return new Promise(function (resolve) {
+    if (Office.context?.mailbox?.item?.getComposeTypeAsync) {
+      Office.context.mailbox.item.getComposeTypeAsync(function (res) {
+        if (res.status === Office.AsyncResultStatus.Succeeded) {
+          console.log('ComposeType:', res.value);
+          resolve(res.value);
+        } else {
+          console.warn('ComposeType failed:', res.error);
+          resolve('NewMail'); // safe default
+        }
+      });
+    } else {
+      resolve('NewMail');
+    }
+  });
+}
+
+/** Read body HTML. */
 function getBodyHtmlAsync() {
   return new Promise(function (resolve, reject) {
     Office.context.mailbox.item.body.getAsync(
@@ -27,6 +63,7 @@ function getBodyHtmlAsync() {
   });
 }
 
+/** Write body HTML. */
 function setBodyHtmlAsync(newHtml) {
   return new Promise(function (resolve, reject) {
     Office.context.mailbox.item.body.setAsync(
@@ -73,7 +110,8 @@ function buildSignatureHtml(person) {
   var phoneLine  = '<div style="color:#000;">office: ' + person.officePhone +
                    (person.officeExt ? ' (' + person.officeExt + ')' : '') +
                    ' | cell: ' + person.mobile + '</div>\n';
-  var emailLine  = '<div><a href="mailto               person.email + '</a></div>\n';
+  var emailLine  = '<div>mailto:' +
+                   person.email + '</a></div>\n';
   var addrLine   = '<div style="color:#000;">' + person.address + ' | mailstop: ' + person.mailstop +
                    (person.site ? ' / ' + person.site : '') + '</div>\n';
   var closeOuter = '</div>';
@@ -83,19 +121,21 @@ function buildSignatureHtml(person) {
 
 /* ========================= Shared implementation ========================= */
 async function doInsertSignature() {
-  // Tiny defer helps on some builds where body isn’t immediately ready for brand-new compose
-  await new Promise(function (r) { setTimeout(r, 25); });
+  // Make sure body APIs are ready
+  await waitForBodyReady(400);
 
-  var bodyHtml = await getBodyHtmlAsync();
-
-  // Idempotence
-  var hasMarker = bodyHtml.indexOf('<!-- ' + MARKER + ' -->') !== -1 || bodyHtml.indexOf(MARKER) !== -1;
-  if (hasMarker) {
-    console.log('Signature already present; skipping.');
-    return;
+  // Optional: disable the client-managed signature to prevent duplicates
+  if (Office.context?.mailbox?.item?.disableClientSignatureAsync) {
+    Office.context.mailbox.item.disableClientSignatureAsync(function (res) {
+      if (res.status !== Office.AsyncResultStatus.Succeeded) {
+        console.warn('disableClientSignatureAsync failed:', res.error);
+      }
+    });
   }
 
-  // v1 static; we’ll swap to Graph later
+  var composeType = await getComposeTypeAsync();
+
+  // Static person block for v1; we’ll swap to Graph later
   var person = {
     displayName: 'Shane Francis',
     title: 'Systems Administrator B IV',
@@ -109,10 +149,43 @@ async function doInsertSignature() {
   };
 
   var sigHtml = buildSignatureHtml(person);
-  var newHtml = insertAfterReplyHeader(bodyHtml, sigHtml);
-  await setBodyHtmlAsync(newHtml);
 
-  console.log('Signature inserted.');
+  if (composeType === 'NewMail') {
+    // Let Outlook place the signature at the STANDARD BOTTOM for new mail
+    return new Promise(function (resolve) {
+      Office.context.mailbox.item.body.setSignatureAsync(
+        sigHtml,
+        { coercionType: Office.CoercionType.Html }, // HTML signature
+        function (res) {
+          if (res.status !== Office.AsyncResultStatus.Succeeded) {
+            console.warn('setSignatureAsync failed; falling back to setBody:', res.error);
+            // Fallback: append to bottom
+            getBodyHtmlAsync()
+              .then(function (bodyHtml) { return setBodyHtmlAsync(bodyHtml + '\n' + sigHtml); })
+              .then(function () { console.log('Signature inserted (fallback bottom).'); resolve(); })
+              .catch(function (err) { console.error('Fallback setBody failed:', err); resolve(); });
+          } else {
+            console.log('Signature inserted (Outlook-managed bottom).');
+            resolve();
+          }
+        }
+      );
+    });
+  } else {
+    // Reply or Forward: place directly under the reply header
+    var bodyHtml = await getBodyHtmlAsync();
+
+    // Idempotence: skip if already present
+    var hasMarker = bodyHtml.indexOf('<!-- ' + MARKER + ' -->') !== -1 || bodyHtml.indexOf(MARKER) !== -1;
+    if (hasMarker) {
+      console.log('Signature already present; skipping.');
+      return;
+    }
+
+    var newHtml = insertAfterReplyHeader(bodyHtml, sigHtml);
+    await setBodyHtmlAsync(newHtml);
+    console.log('Signature inserted (below reply header).');
+  }
 }
 
 /* ========================= Command + Event wrappers ========================= */
@@ -148,16 +221,3 @@ Office.onReady(function () {
   // Bind again once Office is ready (safe to double-associate)
   try { Office.actions.associate('onNewCompose', onNewCompose); }
   catch (e) { console.debug('Associate onReady already bound:', e); }
-
-  // Optional diagnostics: Compose type (NewMail | Reply | Forward)
-  if (Office.context && Office.context.mailbox && Office.context.mailbox.item &&
-      typeof Office.context.mailbox.item.getComposeTypeAsync === 'function') {
-    Office.context.mailbox.item.getComposeTypeAsync(function (res) {
-      if (res.status === Office.AsyncResultStatus.Succeeded) {
-        console.log('ComposeType:', res.value);
-      } else {
-        console.warn('ComposeType failed:', res.error);
-      }
-    });
-  }
-});

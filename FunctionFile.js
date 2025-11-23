@@ -1,10 +1,11 @@
 
 /*
- * FunctionFile.js — FE signature (standard placement), button + autorun
+ * FunctionFile.js — FE signature (standard placement), button + autorun fallback
  * - New compose: append at bottom
  * - Reply/Forward: insert just below the reply/forward header
  * - Prevents duplicates via marker
- * - Works for both ribbon ExecuteFunction and OnNewMessageCompose autorun
+ * - Works for ribbon ExecuteFunction and OnNewMessageCompose autorun
+ * - Adds a tiny deferred fallback call so compose always gets the signature
  */
 
 console.log('FunctionFile.js loaded');
@@ -87,11 +88,7 @@ function buildSignatureHtml(person) {
 /* ========================= Shared handler for button + autorun ========================= */
 async function insertSignature(event) {
   try {
-    // If the event parameter is missing (button click), create a stub so we can always call completed().
     var evt = event || { completed: function () {} };
-
-    // Small defer helps on some builds where body isn’t immediately ready for new compose
-    await new Promise(function (r) { setTimeout(r, 25); });
 
     var bodyHtml = await getBodyHtmlAsync();
 
@@ -129,19 +126,17 @@ async function insertSignature(event) {
   }
 }
 
-/* Make the function AVAILABLE to the ribbon button (ExecuteFunction). */
+/* Expose for the ribbon button (ExecuteFunction). */
 window.insertSignature = insertSignature;
 
-/* ========================= Early association to catch autorun before onReady ========================= */
+/* ========================= Early association + autorun fallback shim ========================= */
 try {
-  // Bind as soon as the script loads (helps if the sandbox fires before onReady)
+  // Bind as soon as the script loads (helps if the sandbox triggers before onReady)
   Office.actions.associate('insertSignature', insertSignature);
 } catch (e) {
-  // on some clients Office may not be ready yet—onReady below will bind again
   console.debug('Initial associate deferred:', e);
 }
 
-/* ========================= Consolidated Office.onReady ========================= */
 Office.onReady(function () {
   console.log('Autorun runtime loaded:', Office.context.platform);
 
@@ -152,12 +147,17 @@ Office.onReady(function () {
     console.debug('Associate onReady already bound:', e);
   }
 
-  // Optional diagnostics: what compose type are we in? (NewMail | Reply | Forward)
+  // Detect compose type and run a tiny deferred fallback
   if (Office.context && Office.context.mailbox && Office.context.mailbox.item &&
       typeof Office.context.mailbox.item.getComposeTypeAsync === 'function') {
     Office.context.mailbox.item.getComposeTypeAsync(function (res) {
       if (res.status === Office.AsyncResultStatus.Succeeded) {
         console.log('ComposeType:', res.value);
+        // Fallback shim: if the event didn’t fire, run the handler after a short delay.
+        setTimeout(function () {
+          // The marker prevents double insert if the event already fired.
+          try { window.insertSignature(); } catch (ex) { console.warn('Fallback insertSignature failed:', ex); }
+        }, 50);
       } else {
         console.warn('ComposeType failed:', res.error);
       }

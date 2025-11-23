@@ -1,11 +1,8 @@
-
 /*
- * FunctionFile.js — FE signature (standard placement), button + autorun fallback
+ * FunctionFile.js — FE signature (standard placement), button + event with distinct names
  * - New compose: append at bottom
  * - Reply/Forward: insert just below the reply/forward header
  * - Prevents duplicates via marker
- * - Works for ribbon ExecuteFunction and OnNewMessageCompose autorun
- * - Adds a tiny deferred fallback call so compose always gets the signature
  */
 
 console.log('FunctionFile.js loaded');
@@ -76,8 +73,7 @@ function buildSignatureHtml(person) {
   var phoneLine  = '<div style="color:#000;">office: ' + person.officePhone +
                    (person.officeExt ? ' (' + person.officeExt + ')' : '') +
                    ' | cell: ' + person.mobile + '</div>\n';
-  var emailLine  = '<div>mailto:' +
-                   person.email + '</a></div>\n';
+  var emailLine  = '<div><a href="mailto               person.email + '</a></div>\n';
   var addrLine   = '<div style="color:#000;">' + person.address + ' | mailstop: ' + person.mailstop +
                    (person.site ? ' / ' + person.site : '') + '</div>\n';
   var closeOuter = '</div>';
@@ -85,54 +81,63 @@ function buildSignatureHtml(person) {
   return (marker + openOuter + nameLine + titleLine + phoneLine + emailLine + addrLine + closeOuter).trim();
 }
 
-/* ========================= Shared handler for button + autorun ========================= */
-async function insertSignature(event) {
-  try {
-    var evt = event || { completed: function () {} };
+/* ========================= Shared implementation ========================= */
+async function doInsertSignature() {
+  // Tiny defer helps on some builds where body isn’t immediately ready for brand-new compose
+  await new Promise(function (r) { setTimeout(r, 25); });
 
-    var bodyHtml = await getBodyHtmlAsync();
+  var bodyHtml = await getBodyHtmlAsync();
 
-    // Idempotence: skip if already present
-    var hasMarker = bodyHtml.indexOf('<!-- ' + MARKER + ' -->') !== -1 || bodyHtml.indexOf(MARKER) !== -1;
-    if (hasMarker) {
-      console.log('Signature already present; skipping.');
-      return;
-    }
-
-    // v1 static user block (we’ll replace with Graph later)
-    var person = {
-      displayName: 'Shane Francis',
-      title: 'Systems Administrator B IV',
-      officePhone: '3303238382',
-      officeExt: '850-2601',
-      mobile: '330-323-8382',
-      email: 'sfrancis@firstenergycorp.com',
-      address: '341 White Pond Drive, Akron, OH 44320',
-      mailstop: 'A-FEHQ-A2',
-      site: 'Akron FirstEnergy Headquarters'
-    };
-
-    var sigHtml = buildSignatureHtml(person);
-    var newHtml = insertAfterReplyHeader(bodyHtml, sigHtml);
-    await setBodyHtmlAsync(newHtml);
-
-    console.log('Signature inserted.');
-  } catch (err) {
-    console.error('❌ Signature insertion failed:', err);
-  } finally {
-    if (event && typeof event.completed === 'function') {
-      event.completed();
-    }
+  // Idempotence
+  var hasMarker = bodyHtml.indexOf('<!-- ' + MARKER + ' -->') !== -1 || bodyHtml.indexOf(MARKER) !== -1;
+  if (hasMarker) {
+    console.log('Signature already present; skipping.');
+    return;
   }
+
+  // v1 static; we’ll swap to Graph later
+  var person = {
+    displayName: 'Shane Francis',
+    title: 'Systems Administrator B IV',
+    officePhone: '3303238382',
+    officeExt: '850-2601',
+    mobile: '330-323-8382',
+    email: 'sfrancis@firstenergycorp.com',
+    address: '341 White Pond Drive, Akron, OH 44320',
+    mailstop: 'A-FEHQ-A2',
+    site: 'Akron FirstEnergy Headquarters'
+  };
+
+  var sigHtml = buildSignatureHtml(person);
+  var newHtml = insertAfterReplyHeader(bodyHtml, sigHtml);
+  await setBodyHtmlAsync(newHtml);
+
+  console.log('Signature inserted.');
+}
+
+/* ========================= Command + Event wrappers ========================= */
+
+// Ribbon button: ExecuteFunction -> insertSignature
+async function insertSignature(event) {
+  try { await doInsertSignature(); }
+  catch (err) { console.error('❌ Button insertSignature failed:', err); }
+  finally { if (event && typeof event.completed === 'function') { event.completed(); } }
+}
+
+// Event-based autorun: LaunchEvent -> onNewCompose
+async function onNewCompose(event) {
+  try { await doInsertSignature(); }
+  catch (err) { console.error('❌ Autorun onNewCompose failed:', err); }
+  finally { if (event && typeof event.completed === 'function') { event.completed(); } }
 }
 
 /* Expose for the ribbon button (ExecuteFunction). */
 window.insertSignature = insertSignature;
 
-/* ========================= Early association + autorun fallback shim ========================= */
+/* ========================= Associate event handler ========================= */
 try {
-  // Bind as soon as the script loads (helps if the sandbox triggers before onReady)
-  Office.actions.associate('insertSignature', insertSignature);
+  // Bind the event handler name used in the manifest
+  Office.actions.associate('onNewCompose', onNewCompose);
 } catch (e) {
   console.debug('Initial associate deferred:', e);
 }
@@ -141,23 +146,15 @@ Office.onReady(function () {
   console.log('Autorun runtime loaded:', Office.context.platform);
 
   // Bind again once Office is ready (safe to double-associate)
-  try {
-    Office.actions.associate('insertSignature', insertSignature);
-  } catch (e) {
-    console.debug('Associate onReady already bound:', e);
-  }
+  try { Office.actions.associate('onNewCompose', onNewCompose); }
+  catch (e) { console.debug('Associate onReady already bound:', e); }
 
-  // Detect compose type and run a tiny deferred fallback
+  // Optional diagnostics: Compose type (NewMail | Reply | Forward)
   if (Office.context && Office.context.mailbox && Office.context.mailbox.item &&
       typeof Office.context.mailbox.item.getComposeTypeAsync === 'function') {
     Office.context.mailbox.item.getComposeTypeAsync(function (res) {
       if (res.status === Office.AsyncResultStatus.Succeeded) {
         console.log('ComposeType:', res.value);
-        // Fallback shim: if the event didn’t fire, run the handler after a short delay.
-        setTimeout(function () {
-          // The marker prevents double insert if the event already fired.
-          try { window.insertSignature(); } catch (ex) { console.warn('Fallback insertSignature failed:', ex); }
-        }, 50);
       } else {
         console.warn('ComposeType failed:', res.error);
       }

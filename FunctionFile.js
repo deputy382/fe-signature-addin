@@ -1,23 +1,19 @@
 
 /*
- * FunctionFile.js — FE signature (standard placement) with inline logo (CID)
+ * FunctionFile.js — FE signature (standard placement) without logo
  * Placement rules:
  *  - New compose: append at bottom
  *  - Reply/Forward: insert just below the reply/forward header
  *
  * Notes:
- *  - Inline image via CID (cid:fe-logo.png).
- *  - Marker prevents duplicate inserts.
- *  - Consolidated Office.onReady(...) with association + diagnostics.
+ *  - No inline image work (logo deferred).
+ *  - Hidden marker prevents duplicate inserts.
+ *  - A single Office.onReady associates the event handler and logs diagnostics.
  */
 
 console.log("FunctionFile.js loaded");
 
 const MARKER = "FE_SIGNATURE_MARKER";
-const INLINE_IMAGE_NAME = "fe-logo.png"; // CID name used in cid:...
-
-// TODO: Replace with your actual Base64 PNG for the FE logo (transparent, ~40–42px height recommended).
-const FE_LOGO_BASE64 = "<BASE64_PNG_STRING_FOR_FE_LOGO>";
 
 /* ========================= Helpers ========================= */
 
@@ -25,10 +21,14 @@ function getBodyHtmlAsync() {
   return new Promise((resolve, reject) => {
     Office.context.mailbox.item.body.getAsync(
       Office.CoercionType.Html,
-      (res) =>
-        res.status === Office.AsyncResultStatus.Succeeded
-          ? resolve(res.value || "")
-          : reject(res.error)
+      (res) => {
+        if (res.status === Office.AsyncResultStatus.Succeeded) {
+          resolve(res.value || "");
+        } else {
+          console.error("getAsync(body HTML) failed:", res.error);
+          reject(res.error);
+        }
+      }
     );
   });
 }
@@ -38,10 +38,14 @@ function setBodyHtmlAsync(newHtml) {
     Office.context.mailbox.item.body.setAsync(
       newHtml,
       { coercionType: Office.CoercionType.Html },
-      (res) =>
-        res.status === Office.AsyncResultStatus.Succeeded
-          ? resolve()
-          : reject(res.error)
+      (res) => {
+        if (res.status === Office.AsyncResultStatus.Succeeded) {
+          resolve();
+        } else {
+          console.error("setAsync(body HTML) failed:", res.error);
+          reject(res.error);
+        }
+      }
     );
   });
 }
@@ -70,39 +74,18 @@ function insertAfterReplyHeader(html, sigHtml) {
   return `${html}\n${sigHtml}`;
 }
 
-/**
- * Attach inline image from Base64 and return the cid:... tag.
- */
-function attachInlineImageAndGetCidTag(base64Png) {
-  return new Promise((resolve, reject) => {
-    Office.context.mailbox.item.addFileAttachmentFromBase64Async(
-      base64Png,
-      INLINE_IMAGE_NAME,
-      { isInline: true },
-      (attachResult) => {
-        if (attachResult.status !== Office.AsyncResultStatus.Succeeded) {
-          return reject(attachResult.error);
-        }
-        // Render with fixed max-height to align nicely with text block.
-        const imgTag = `<id:${INLINE_IMAGE_NAME}`;
-        resolve(imgTag);
-      }
-    );
-  });
-}
-
 /* ========================= Signature builder ========================= */
 /*
-   Layout (matches your screenshot):
-   ┌───────────────┬──────────────────────────────────────────────────────┐
-   │     Logo      │ Name (bold)                                          │
-   │               │ Title                                                │
-   │               │ office: … | cell: …                                  │
-   │               │ email (blue link)                                    │
-   │               │ address | mailstop … / site                          │
-   └───────────────┴──────────────────────────────────────────────────────┘
+   Layout (matches your screenshot, without logo):
+   ┌───────────────────────────────────────────────────────────────┐
+   │ Name (bold)                                                   │
+   │ Title                                                         │
+   │ office: … | cell: …                                           │
+   │ email (blue link)                                             │
+   │ address | mailstop … / site                                   │
+   └───────────────────────────────────────────────────────────────┘
 */
-function buildSignatureHtml(imgTag, person) {
+function buildSignatureHtml(person) {
   const nameLine   = `<div style="font-size:13px; font-weight:600; color:#000;">${person.displayName}</div>`;
   const titleLine  = `<div style="color:#000;">${person.title}</div>`;
   const phoneLine  = `<div style="color:#000;">office: ${person.officePhone}${person.officeExt ? ` (${person.officeExt})` : ""} | cell: ${person.mobile}</div>`;
@@ -111,20 +94,13 @@ function buildSignatureHtml(imgTag, person) {
 
   return `
     <!-- ${MARKER} -->
-    <table role="presentation" style="font-family:'Segoe UI', Arial, sans-serif; font-size:12px; line-height:1.35;">
-      <tr>
-        <td style="vertical-align:top; padding-right:12px;">
-          ${imgTag}
-        </td>
-        <td style="vertical-align:top; padding:2px 0;">
-          ${nameLine}
-          ${titleLine}
-          ${phoneLine}
-          ${emailLine}
-          ${addrLine}
-        </td>
-      </tr>
-    </table>
+    <div style="font-family:'Segoe UI', Arial, sans-serif; font-size:12px; line-height:1.35;">
+      ${nameLine}
+      ${titleLine}
+      ${phoneLine}
+      ${emailLine}
+      ${addrLine}
+    </div>
   `.trim();
 }
 
@@ -157,18 +133,17 @@ async function insertSignature(event) {
       site: "Akron FirstEnergy Headquarters"
     };
 
-    // Attach logo inline and build the signature HTML
-    const imgCidTag = await attachInlineImageAndGetCidTag(FE_LOGO_BASE64);
-    const sigHtml   = buildSignatureHtml(imgCidTag, person);
-
-    // Standard placement (below reply header / else bottom)
+    // Build signature and place in standard location
+    const sigHtml = buildSignatureHtml(person);
     const newHtml = insertAfterReplyHeader(bodyHtml, sigHtml);
+
+    // Write into body
     await setBodyHtmlAsync(newHtml);
 
     const t1 = performance.now();
     console.log(`Signature inserted at standard location. (${Math.round(t1 - t0)} ms)`);
   } catch (err) {
-    console.error("Signature insertion failed:", err);
+    console.error("❌ Signature insertion failed:", err);
   } finally {
     // Must signal completion for event-based activation
     event.completed();
@@ -177,18 +152,18 @@ async function insertSignature(event) {
 
 /* ========================= Consolidated Office.onReady ========================= */
 Office.onReady(async () => {
-  // Verify the autorun/runtime loaded
   console.log("Autorun runtime loaded:", Office.context.platform);
 
-  // REQUIRED: wire manifest function -> handler
+  // REQUIRED: bind manifest function -> handler
   Office.actions.associate("insertSignature", insertSignature);
 
-  // Optional diagnostics: what compose type are we in? (NewMail | Reply | Forward)
+  // Optional: confirm compose type (NewMail | Reply | Forward)
   if (Office.context?.mailbox?.item?.getComposeTypeAsync) {
     Office.context.mailbox.item.getComposeTypeAsync((res) => {
-      console.log("ComposeType:", res.status, res.value);
+      if (res.status === Office.AsyncResultStatus.Succeeded) {
+        console.log("ComposeType:", res.value);
+      } else {
+        console.warn("ComposeType failed:", res.error);
+      }
     });
   }
-
-  // Keep this block lightweight—heavy init can slow event handlers.
-});

@@ -25,7 +25,10 @@ function getBodyHtmlAsync() {
   return new Promise((resolve, reject) => {
     Office.context.mailbox.item.body.getAsync(
       Office.CoercionType.Html,
-      (res) => res.status === Office.AsyncResultStatus.Succeeded ? resolve(res.value || "") : reject(res.error)
+      (res) =>
+        res.status === Office.AsyncResultStatus.Succeeded
+          ? resolve(res.value || "")
+          : reject(res.error)
     );
   });
 }
@@ -35,7 +38,10 @@ function setBodyHtmlAsync(newHtml) {
     Office.context.mailbox.item.body.setAsync(
       newHtml,
       { coercionType: Office.CoercionType.Html },
-      (res) => res.status === Office.AsyncResultStatus.Succeeded ? resolve() : reject(res.error)
+      (res) =>
+        res.status === Office.AsyncResultStatus.Succeeded
+          ? resolve()
+          : reject(res.error)
     );
   });
 }
@@ -48,7 +54,7 @@ function insertAfterReplyHeader(html, sigHtml) {
   const patterns = [
     /<div[^>]*id=["']divRplyFwdMsg["'][^>]*>/i,         // Classic Outlook wrapper
     /<hr[^>]*>/i,                                       // Horizontal rule before quoted content
-    /<div[^>]*>.*?On .*? wrote:\s*<\/div>/is,            // English textual header in a div
+    /<div[^>]*>.*?On .*? wrote:\s*<\/div>/is,           // English textual header in a div
     /On .*? wrote:/i,                                   // English textual header (fallback)
     /<blockquote[^>]*>/i,                               // Quoted block (OWA/New Outlook)
     /<div[^>]*class=["'][^"']*(gmail_quote|moz-cite-prefix|yahoo_quoted|WordSection1)["'][^>]*>/i
@@ -78,7 +84,7 @@ function attachInlineImageAndGetCidTag(base64Png) {
           return reject(attachResult.error);
         }
         // Render with fixed max-height to align nicely with text block.
-        const imgTag = `cid:${INLINE_IMAGE_NAME}`;
+        const imgTag = `<id:${INLINE_IMAGE_NAME}`;
         resolve(imgTag);
       }
     );
@@ -100,7 +106,7 @@ function buildSignatureHtml(imgTag, person) {
   const nameLine   = `<div style="font-size:13px; font-weight:600; color:#000;">${person.displayName}</div>`;
   const titleLine  = `<div style="color:#000;">${person.title}</div>`;
   const phoneLine  = `<div style="color:#000;">office: ${person.officePhone}${person.officeExt ? ` (${person.officeExt})` : ""} | cell: ${person.mobile}</div>`;
-  const emailLine  = `<div><a href="mailto:${person.email}" style/a></div>`;
+  const emailLine  = `<div>mailto:${person.email}${person.email}</a></div>`;
   const addrLine   = `<div style="color:#000;">${person.address} | mailstop: ${person.mailstop}${person.site ? ` / ${person.site}` : ""}</div>`;
 
   return `

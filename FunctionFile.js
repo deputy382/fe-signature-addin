@@ -87,6 +87,12 @@ function buildSignatureHtml(person) {
 /* ========================= Shared handler for button + autorun ========================= */
 async function insertSignature(event) {
   try {
+    // If the event parameter is missing (button click), create a stub so we can always call completed().
+    var evt = event || { completed: function () {} };
+
+    // Small defer helps on some builds where body isn’t immediately ready for new compose
+    await new Promise(function (r) { setTimeout(r, 25); });
+
     var bodyHtml = await getBodyHtmlAsync();
 
     // Idempotence: skip if already present
@@ -117,7 +123,6 @@ async function insertSignature(event) {
   } catch (err) {
     console.error('❌ Signature insertion failed:', err);
   } finally {
-    // Required for both event-based and ExecuteFunction command handlers
     if (event && typeof event.completed === 'function') {
       event.completed();
     }
@@ -127,12 +132,25 @@ async function insertSignature(event) {
 /* Make the function AVAILABLE to the ribbon button (ExecuteFunction). */
 window.insertSignature = insertSignature;
 
+/* ========================= Early association to catch autorun before onReady ========================= */
+try {
+  // Bind as soon as the script loads (helps if the sandbox fires before onReady)
+  Office.actions.associate('insertSignature', insertSignature);
+} catch (e) {
+  // on some clients Office may not be ready yet—onReady below will bind again
+  console.debug('Initial associate deferred:', e);
+}
+
 /* ========================= Consolidated Office.onReady ========================= */
 Office.onReady(function () {
   console.log('Autorun runtime loaded:', Office.context.platform);
 
-  // REQUIRED: bind manifest function -> handler for event-based activation
-  Office.actions.associate('insertSignature', insertSignature);
+  // Bind again once Office is ready (safe to double-associate)
+  try {
+    Office.actions.associate('insertSignature', insertSignature);
+  } catch (e) {
+    console.debug('Associate onReady already bound:', e);
+  }
 
   // Optional diagnostics: what compose type are we in? (NewMail | Reply | Forward)
   if (Office.context && Office.context.mailbox && Office.context.mailbox.item &&

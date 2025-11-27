@@ -1,182 +1,117 @@
-/* FunctionFile.js — FE Signature (commands + autorun) */
-console.log('FunctionFile.js loaded');
+/* FunctionFile.js — FE Signature (button-driven, Entra/Graph SSO, no static fallback) */
 
-// ---- Constants
-const SIG_MARKER = 'FE_SIGNATURE_MARKER';
+/* ========= CONFIG: EDIT THESE ========= */
+const API_BASE = "https://api.your-backend.com/fe-signature // TODO: Update to your backend endpoint"; // TODO: change to your backend host
+const COMPANY_TEXT = "FirstEnergy Corp."; // optional default if backend doesn't supply
+const logoUrl = "https://yourcompany.com/logo.png // TODO: Replace with actual logo URL"; // TODO: swap to actual logo URL
+
+/* ========= INTERNAL ========= */
+const SIG_MARKER = "FE_SIGNATURE_MARKER";
 const SIG_COMMENT = `<!-- ${SIG_MARKER} -->`;
 
-// ---- Utilities
-function waitForBodyReady(maxMs = 400) {
-  return new Promise((resolve) => {
-    const start = performance.now();
-    (function check() {
-      try {
-        Office.context.mailbox.item.body.getAsync(Office.CoercionType.Html, (res) => {
-          const ok = res.status === Office.AsyncResultStatus.Succeeded && typeof res.value === 'string';
-          if (ok) return resolve();
-          if ((performance.now() - start) >= maxMs) return resolve(); // proceed anyway
-          setTimeout(check, 50);
-        });
-      } catch {
-        resolve();
-      }
-    })();
-  });
+/**
+ * Build the signature HTML from user data.
+ * @param {object} d Normalized DTO fields expected from backend:
+ *  {
+ *    displayName, jobTitle, mail,
+ *    mobilePhone, businessPhone,
+ *    officeLocation, mailStop,
+ *    company? // optional; will default to COMPANY_TEXT if absent
+ *  }
+ */
+function buildSignatureHtml(d) {
+  const esc = (s) => (s || "").toString()
+    .replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;",">" :"&gt;" ,'"' :"&quot;" }[c])); const displayName=esc(d.displayName); const jobTitle=esc(d.jobTitle); const mail=esc(d.mail); const mobilePhone=esc(d.mobilePhone); const businessPhone=esc(d.businessPhone); const office=esc(d.officeLocation); const mailStop=esc(d.mailStop); const company=esc(d.company || COMPANY_TEXT); return ( SIG_COMMENT + `
+	<table cellpadding="0" cellspacing="0" style="font-family:'Segoe UI', Arial, sans-serif; font-size:12px; line-height:1.35;">
+		<tr>
+			<td style="vertical-align:middle; padding-right:16px;">
+				<img src="${logoUrl}" alt="FirstEnergy Logo" style="border-left:2px solid #003366; padding-left:16px; verticaldiv>
+      <div style=" font-size:13px; color:#222; margin-bottom:6px;">${jobTitle}< div>
+				<div style="margin-bottom:2px;">
+					<span style="color:#0072c6;">office: ${businessPhone}</span>
+					<span style="color:#222;"> | </span>
+					<span style="color:#0072c6;">cell: ${mobilePhone}</span>
+				</div>
+				<div style="margin-bottom:2px;">
+					<a href="mailto{mail}</a>
+      </div>
+      <div style=" color:#0072c6;"> ${office} | mailstop: ${mailStop} ${company}
+				</div>
+			</td>
+		</tr>
+	</table>
+    `.trim()
+  );
 }
 
-// Returns 'newMail' | 'reply' | 'forward' (Mailbox 1.10)
-function getComposeTypeAsync() {
-  return new Promise((resolve) => {
-    const fn = Office.context?.mailbox?.item?.getComposeTypeAsync;
-    if (!fn) return resolve('newMail');
-    fn((res) => {
-      if (res.status === Office.AsyncResultStatus.Succeeded && res.value?.composeType) {
-        console.log('ComposeType:', res.value.composeType);
-        resolve(res.value.composeType); // expected values: newMail, reply, forward
-      } else {
-        console.warn('getComposeTypeAsync failed:', res.error);
-        resolve('newMail');
-      }
-    });
+/**
+ * Get user data from your backend via SSO → OBO → Graph.
+ * Backend endpoint: GET /api/signature/me
+ * - Validates Office SSO token
+ * - Exchanges via OBO for Graph token
+ * - Calls Graph /me (and optionally extensions)
+ * - Returns normalized DTO
+ */
+async function fetchUserData() {
+  // 1) Get Office SSO token (scoped to your manifest's Resource/Application ID URI)
+  const ssoToken = await OfficeRuntime.auth.getAccessToken({ allowSignInPrompt: true });
+
+  // 2) Call backend with SSO token
+  const res = await fetch(`${API_BASE}/api/signature/me`, {
+    method: "GET",
+    headers: { Authorization: `Bearer ${ssoToken}` }
   });
+  if (!res.ok) throw new Error(`API ${res.status}`);
+
+  const dto = await res.json();
+
+  // 3) Normalize defensively (some props may be missing)
+  const businessPhone = Array.isArray(dto.businessPhones) && dto.businessPhones.length
+    ? dto.businessPhones[0]
+    : (dto.businessPhone || "");
+
+  return {
+    displayName:   dto.displayName || "",
+    jobTitle:      dto.jobTitle || "",
+    mail:          dto.mail || dto.userPrincipalName || "",
+    mobilePhone:   dto.mobilePhone || "",
+    businessPhone,
+    officeLocation:dto.officeLocation || "",
+    // If you store mail stop in onPremisesExtensionAttributes.extensionAttributeX, map it server-side,
+    // or keep this fallback client-side until you finalize which attribute you use:
+    mailStop:      dto.mailStop || (dto.onPremisesExtensionAttributes?.extensionAttribute1 || ""),
+    company:       dto.company || COMPANY_TEXT
+  };
 }
 
-// Body helpers
-function getBodyHtmlAsync() {
+/** Insert signature using Outlook's signature API (host-managed placement) */
+async function doInsertSignature() {
+  const data = await fetchUserData();
+  const sigHtml = buildSignatureHtml(data);
+
   return new Promise((resolve, reject) => {
-    Office.context.mailbox.item.body.getAsync(Office.CoercionType.Html, (res) => {
+    Office.context.mailbox.item.body.setSignatureAsync(sigHtml, (res) => {
       if (res.status === Office.AsyncResultStatus.Succeeded) {
-        resolve(res.value || '');
+        resolve();
       } else {
+        console.error("setSignatureAsync failed:", res.error);
         reject(res.error);
       }
     });
   });
 }
 
-function setBodyHtmlAsync(html) {
-  return new Promise((resolve, reject) => {
-    Office.context.mailbox.item.body.setAsync(html, { coercionType: Office.CoercionType.Html }, (res) => {
-      if (res.status === Office.AsyncResultStatus.Succeeded) resolve();
-      else reject(res.error);
-    });
-  });
-}
-
-// Insert signature just after reply/forward header markers; else append bottom.
-function insertBelowReplyHeader(html, sigHtml) {
-  const patterns = [
-    /<div[^>]*id=["']divRplyFwdMsg["'][^>]*>/i,           // classic Outlook wrapper
-    /<hr[^>]*>/i,                                         // horizontal rule before quoted content
-    /<blockquote[^>]*>/i,                                 // quoted block (OWA/New Outlook)
-    /<div[^>]*class=["'][^"']*(gmail_quote|moz-cite-prefix|yahoo_quoted|WordSection1)["'][^>]*>/i,
-    /On .+ wrote:/i                                       // textual header fallback
-  ];
-  for (const re of patterns) {
-    const m = html.match(re);
-    if (m) {
-      const idx = html.indexOf(m[0]) + m[0].length;
-      return html.slice(0, idx) + '\n' + sigHtml + '\n' + html.slice(idx);
-    }
-  }
-  return html + '\n' + sigHtml; // fallback: append bottom
-}
-
-// ---- Signature builder (static content for now; swap to Graph later)
-function buildSignatureHtml() {
-  const lines = [
-    '<div style="font-family:\'Segoe UI\', Arial, sans-serif; font-size:12px; line-height:1.35;">',
-    '<div style="font-size:13px; font-weight:600; color:#000;">Shane Francis</div>',
-    '<div style="color:#000;">Systems Administrator B IV</div>',
-    '<div style="color:#000;">office: 850-2601 &nbsp;&nbsp; cell: 330-323-8382</div>',
-    '<div>mailto:sfrancis@firstenergycorp.comsfrancis@firstenergycorp.com</a></div>',
-    '<div style="color:#000;">341 White Pond Drive, Akron, OH 44320 &nbsp; mailstop: A-FEHQ-A2 / Akron FirstEnergy HQ</div>',
-    '</div>'
-  ];
-  return (SIG_COMMENT + '\n' + lines.join('\n')).trim();
-}
-
-// ---- Core implementation
-async function doInsertSignature() {
-  // body-ready shim
-  await waitForBodyReady(400);
-
-  // Avoid client-managed duplicates when supported (Mailbox 1.10)
-  if (Office.context?.mailbox?.item?.disableClientSignatureAsync) {
-    Office.context.mailbox.item.disableClientSignatureAsync((res) => {
-      if (res.status !== Office.AsyncResultStatus.Succeeded) {
-        console.warn('disableClientSignatureAsync failed:', res.error);
-      }
-    });
-  }
-
-  const composeType = await getComposeTypeAsync();
-  const sigHtml = buildSignatureHtml();
-
-  if (composeType === 'newMail') {
-    // Let Outlook place at the standard bottom
-    return new Promise((resolve) => {
-      try {
-        Office.context.mailbox.item.body.setSignatureAsync(sigHtml, (res) => {
-          if (res.status !== Office.AsyncResultStatus.Succeeded) {
-            console.warn('setSignatureAsync failed; falling back to append:', res.error);
-            // fallback: append bottom
-            getBodyHtmlAsync()
-              .then((bodyHtml) => setBodyHtmlAsync(bodyHtml + '\n' + sigHtml))
-              .then(() => { console.log('Signature inserted (fallback bottom).'); resolve(); })
-              .catch((err) => { console.error('Fallback setBody failed:', err); resolve(); });
-          } else {
-            console.log('Signature inserted (Outlook-managed bottom).');
-            resolve();
-          }
-        });
-      } catch (e) {
-        console.warn('setSignatureAsync threw; attempting fallback:', e);
-        getBodyHtmlAsync()
-          .then((bodyHtml) => setBodyHtmlAsync(bodyHtml + '\n' + sigHtml))
-          .then(() => console.log('Signature inserted (fallback bottom).'))
-          .catch((err) => console.error('Fallback setBody failed:', err));
-      }
-    });
-  } else {
-    // reply or forward: place directly under the reply header
-    const bodyHtml = await getBodyHtmlAsync();
-
-    // Idempotence: skip if already present
-    if (bodyHtml.includes(SIG_MARKER) || bodyHtml.includes(SIG_COMMENT)) {
-      console.log('Signature already present; skipping.');
-      return;
-    }
-
-    const newHtml = insertBelowReplyHeader(bodyHtml, sigHtml);
-    await setBodyHtmlAsync(newHtml);
-    console.log('Signature inserted (below reply header).');
-  }
-}
-
-// ---- Wrappers (required for commands/events)
-// Ribbon button
+/** Ribbon command entry point (manifest ExecuteFunction → insertSignature) */
 async function insertSignature(event) {
   try { await doInsertSignature(); }
-  catch (err) { console.error('❌ insertSignature failed:', err); }
-  finally { if (event && typeof event.completed === 'function') event.completed(); }
+  catch (err) { console.error("insertSignature failed:", err); }
+  finally { if (event && typeof event.completed === "function") event.completed(); }
 }
 
-// Event-based autorun
-async function onNewCompose(event) {
-  try { await doInsertSignature(); }
-  catch (err) { console.error('❌ onNewCompose failed:', err); }
-  finally { if (event && typeof event.completed === 'function') event.completed(); }
-}
-
-// Expose for ExecuteFunction (Commands v1.0)
+// Expose for manifest
 window.insertSignature = insertSignature;
 
-// Associate for LaunchEvent (V1_1)
-try { Office.actions.associate('onNewCompose', onNewCompose); } catch (e) { /* ignore until Office is ready */ }
-
-// Log and re-associate when Office is ready
+// Optional logging
 Office.onReady(() => {
-  console.log('Autorun runtime loaded:', Office.context.platform);
-  try { Office.actions.associate('onNewCompose', onNewCompose); } catch (e) { /* already bound */ }
+  console.log("FE Signature FunctionFile ready:", Office.context.platform);
 });

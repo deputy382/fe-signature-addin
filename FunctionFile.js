@@ -24,7 +24,6 @@ function waitForBodyReady(maxMs = 400) {
   });
 }
 
-// Returns 'newMail' \\ 'reply' \\ 'forward' (Mailbox 1.10)
 function getComposeTypeAsync() {
   return new Promise((resolve) => {
     const fn = Office.context?.mailbox?.item?.getComposeTypeAsync;
@@ -41,7 +40,6 @@ function getComposeTypeAsync() {
   });
 }
 
-// Body helpers
 function getBodyHtmlAsync() {
   return new Promise((resolve, reject) => {
     Office.context.mailbox.item.body.getAsync(Office.CoercionType.Html, (res) => {
@@ -63,14 +61,13 @@ function setBodyHtmlAsync(html) {
   });
 }
 
-// Insert signature just after reply/forward header markers; else append bottom.
 function insertBelowReplyHeader(html, sigHtml) {
   const patterns = [
-    /<div[^>]*id=["']divRplyFwdMsg["'][^>]*>/i, // classic Outlook wrapper
-    /<hr[^>]*>/i, // horizontal rule before quoted content
-    /<blockquote[^>]*>/i, // quoted block (OWA/New Outlook)
+    /<div[^>]*id=["']divRplyFwdMsg["'][^>]*>/i,
+    /<hr[^>]*>/i,
+    /<blockquote[^>]*>/i,
     /<div[^>]*class=["'][^"']*(gmail_quote|moz-cite-prefix|yahoo_quoted|WordSection1)["'][^>]*>/i,
-    /On .+ wrote:/i // textual header fallback
+    /On .+ wrote:/i
   ];
   for (const re of patterns) {
     const m = html.match(re);
@@ -79,10 +76,9 @@ function insertBelowReplyHeader(html, sigHtml) {
       return html.slice(0, idx) + '\n' + sigHtml + '\n' + html.slice(idx);
     }
   }
-  return html + '\n' + sigHtml; // fallback: append bottom
+  return html + '\n' + sigHtml;
 }
 
-// ---- Signature builder (static content for now; swap to Graph later)
 function buildSignatureHtml() {
   const lines = [
     '<div style="font-family:\'Segoe UI\', Arial, sans-serif; font-size:12px; line-height:1.35;">',
@@ -96,11 +92,8 @@ function buildSignatureHtml() {
   return (SIG_COMMENT + '\n' + lines.join('\n')).trim();
 }
 
-// ---- Core implementation
 async function doInsertSignature() {
-  // body-ready shim
   await waitForBodyReady(400);
-  // Avoid client-managed duplicates when supported (Mailbox 1.10)
   if (Office.context?.mailbox?.item?.disableClientSignatureAsync) {
     Office.context.mailbox.item.disableClientSignatureAsync((res) => {
       if (res.status !== Office.AsyncResultStatus.Succeeded) {
@@ -111,13 +104,11 @@ async function doInsertSignature() {
   const composeType = await getComposeTypeAsync();
   const sigHtml = buildSignatureHtml();
   if (composeType === 'newMail') {
-    // Let Outlook place at the standard bottom
     return new Promise((resolve) => {
       try {
         Office.context.mailbox.item.setSignatureAsync(sigHtml, (res) => {
           if (res.status !== Office.AsyncResultStatus.Succeeded) {
             console.warn('setSignatureAsync failed; falling back to append:', res.error);
-            // fallback: append bottom
             getBodyHtmlAsync()
               .then((bodyHtml) => setBodyHtmlAsync(bodyHtml + '\n' + sigHtml))
               .then(() => { console.log('Signature inserted (fallback bottom).'); resolve(); })
@@ -136,9 +127,7 @@ async function doInsertSignature() {
       }
     });
   } else {
-    // reply or forward: place directly under the reply header
     const bodyHtml = await getBodyHtmlAsync();
-    // Idempotence: skip if already present
     if (bodyHtml.includes(SIG_MARKER) || bodyHtml.includes(SIG_COMMENT)) {
       console.log('Signature already present; skipping.');
       return;
@@ -149,8 +138,7 @@ async function doInsertSignature() {
   }
 }
 
-// ---- Wrappers (required for commands/events)
-// Ribbon button
+// ---- Ribbon button handler
 async function insertSignature(event) {
   try { await doInsertSignature(); }
   catch (err) { console.error('❌ insertSignature failed:', err); }
@@ -158,8 +146,9 @@ async function insertSignature(event) {
 }
 window.insertSignature = insertSignature;
 
-// Event-based autorun (OnNewMessageCompose)
+// ---- Autorun handler for OnNewMessageCompose
 async function onNewCompose(event) {
+  console.log('onNewCompose fired');
   try { await doInsertSignature(); }
   catch (err) { console.error('❌ onNewCompose failed:', err); }
   finally { if (event && typeof event.completed === 'function') event.completed(); }

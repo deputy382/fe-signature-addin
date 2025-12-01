@@ -146,11 +146,9 @@ async function insertSignature(event) {
 }
 window.insertSignature = insertSignature;
 
-// ---- Autorun handler for OnNewMessageCompose
+
 async function onNewCompose(event) {
-  console.log('onNewCompose fired');
-  try { await doInsertSignature(); }
-  catch (err) { console.error('❌ onNewCompose failed:', err); }
-  finally { if (event && typeof event.completed === 'function') event.completed(); }
+  alert('Autorun works!');
+  if (event && typeof event.completed === 'function') event.completed();
 }
 window.onNewCompose = onNewCompose;

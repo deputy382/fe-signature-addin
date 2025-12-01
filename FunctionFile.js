@@ -1,4 +1,3 @@
-
 /* FunctionFile.js — FE Signature (commands + autorun) */
 console.log('FunctionFile.js loaded');
 

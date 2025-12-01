@@ -1,5 +1,16 @@
+
 /* FunctionFile.js — FE Signature (commands + autorun) */
 console.log('FunctionFile.js loaded');
+
+Office.onReady((info) => {
+  if (info.host === Office.HostType.Outlook) {
+    console.log("Office.js is ready for Outlook");
+
+    // Expose handlers globally for ribbon and autorun
+    window.insertSignature = insertSignature;
+    window.onNewCompose = onNewCompose;
+  }
+});
 
 // ---- Constants
 const SIG_MARKER = 'FE_SIGNATURE_MARKER';
@@ -31,7 +42,7 @@ function getComposeTypeAsync() {
     fn((res) => {
       if (res.status === Office.AsyncResultStatus.Succeeded && res.value?.composeType) {
         console.log('ComposeType:', res.value.composeType);
-        resolve(res.value.composeType); // expected values: newMail, reply, forward
+        resolve(res.value.composeType); // expected: newMail, reply, forward
       } else {
         console.warn('getComposeTypeAsync failed:', res.error);
         resolve('newMail');
@@ -144,11 +155,10 @@ async function insertSignature(event) {
   catch (err) { console.error('❌ insertSignature failed:', err); }
   finally { if (event && typeof event.completed === 'function') event.completed(); }
 }
-window.insertSignature = insertSignature;
-
 
 async function onNewCompose(event) {
-  alert('Autorun works!');
-  if (event && typeof event.completed === 'function') event.completed();
+  console.log('Autorun works!');
+  try { await doInsertSignature(); }
+  catch (err) { console.error('❌ onNewCompose failed:', err); }
+  finally { if (event && typeof event.completed === 'function') event.completed(); }
 }
-window.onNewCompose = onNewCompose;

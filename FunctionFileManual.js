@@ -1,9 +1,9 @@
-/* FunctionFileManual.js — FE Signature (commands + autorun) */
+/* FunctionFileManual.js — FE Signature (button-only) */
 console.log('FunctionFileManual.js loaded');
 
 // ---- Constants
 const SIG_MARKER = 'FE_SIGNATURE_MARKER';
-const SIG_COMMENT = `<!-- ${SIG_MARKER} -->`;
+const SIG_COMMENT = `<!-- ${SIG_MARKER} -->`; // real HTML comment
 
 // ---- Utilities
 function waitForBodyReady(maxMs = 400) {
@@ -62,12 +62,13 @@ function setBodyHtmlAsync(html) {
 }
 
 function insertBelowReplyHeader(html, sigHtml) {
+  // Match actual HTML tags and common reply markers (not escaped)
   const patterns = [
-    /<div[^>]*id=["']divRplyFwdMsg["'][^>]*>/i,
-    /<hr[^>]*>/i,
-    /<blockquote[^>]*>/i,
+    /<div[^>]*id=["']divRplyFwdMsg["'][^>]*>/i,            // Outlook web reply header container
+    /<hr[^>]*>/i,                                           // Horizontal rule often used in replies
+    /<blockquote[^>]*>/i,                                   // Gmail/others
     /<div[^>]*class=["'][^"']*(gmail_quote|moz-cite-prefix|yahoo_quoted|WordSection1)["'][^>]*>/i,
-    /On .+ wrote:/i
+    /On .+ wrote:/i                                         // Plain-text reply header
   ];
   for (const re of patterns) {
     const m = html.match(re);
@@ -110,8 +111,9 @@ async function getUserProfileFromGraph() {
   }
 }
 
+// Escape only dynamic text content, not the HTML template.
 function escapeHtml(s) {
-  if (!s) return '';
+  if (s == null) return '';
   return String(s)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -129,7 +131,7 @@ async function buildSignatureHtml() {
     displayName: 'Shane Francis',
     jobTitle: 'Systems Administrator B IV',
     mail: 'sfrancis@firstenergycorp.com',
-    officeLocation: '341 White Pond Drive, Akron, OH 44320 &nbsp; mailstop: A-FEHQ-A2 / Akron FirstEnergy HQ',
+    officeLocation: '341 White Pond Drive, Akron, OH 44320 • mailstop: A-FEHQ-A2 / Akron FirstEnergy HQ',
     businessPhones: ['850-2601'],
     mobilePhone: '330-323-8382'
   };
@@ -140,23 +142,25 @@ async function buildSignatureHtml() {
   const phones = Array.isArray(p?.businessPhones) ? p.businessPhones.filter(Boolean) : [];
   const officePhone = escapeHtml(phones[0] || fallback.businessPhones[0]);
   const mobile = escapeHtml(p?.mobilePhone || fallback.mobilePhone);
-  const officeLoc = (p?.officeLocation ? escapeHtml(p.officeLocation) : fallback.officeLocation);
+  const officeLoc = escapeHtml(p?.officeLocation || fallback.officeLocation);
 
   const phoneLine = (officePhone || mobile)
-    ? `office: ${officePhone}${mobile ? ' &nbsp;&nbsp; cell: ' + mobile : ''}` : '';
+    ? `office: ${officePhone}${mobile ? '   cell: ' + mobile : ''}` : '';
 
-const sig = `
+  // Build REAL HTML (do NOT escape the tags)
+  const sig = `
 <div style="font-family:'Segoe UI', Arial, sans-serif; font-size:12px; color:#333; line-height:1.5;">
   <div style="font-size:14px; font-weight:bold; color:#000;">${name}</div>
   ${title ? `<div style="margin-bottom:4px;">${title}</div>` : ''}
   ${phoneLine ? `<div style="margin-bottom:4px;">${phoneLine}</div>` : ''}
-  ${email ? `<div><a href="mailto:${email}" style="color:#0078D4; text-decorationstyle="margin-top:4px;">${officeLoc}</div>` : ''}
+  ${email ? `<div>mailto:${email}${email}</a></div>` : ''}
+  ${officeLoc ? `<div style="margin-top:4px;">${officeLoc}</div>` : ''}
   <hr style="border:none; border-top:1px solid #ccc; margin:8px 0;">
   <div style="font-size:11px; color:#666;">FirstEnergy Corp | Confidential</div>
 </div>
 `.trim();
 
-
+  // Prepend an HTML comment marker so we can detect duplicates
   return (SIG_COMMENT + '\n' + sig).trim();
 }
 
@@ -173,12 +177,11 @@ async function doInsertSignature() {
   }
 
   const composeType = await getComposeTypeAsync();
-  const sigHtml = await buildSignatureHtml(); // <-- now async
+  const sigHtml = await buildSignatureHtml();
 
   if (composeType === 'newMail') {
     return new Promise((resolve) => {
       try {
-        // Using body.setSignatureAsync per your existing manual implementation
         Office.context.mailbox.item.body.setSignatureAsync(sigHtml, (res) => {
           if (res.status !== Office.AsyncResultStatus.Succeeded) {
             console.warn('setSignatureAsync failed; falling back to append:', res.error);
@@ -200,6 +203,7 @@ async function doInsertSignature() {
       }
     });
   } else {
+    // Replies/forwards: insert below reply header and avoid duplicates
     const bodyHtml = await getBodyHtmlAsync();
     if (bodyHtml.includes(SIG_MARKER) || bodyHtml.includes(SIG_COMMENT)) {
       console.log('Signature already present; skipping.');
@@ -211,25 +215,18 @@ async function doInsertSignature() {
   }
 }
 
-// ---- Wrappers (required for commands/events)
+// ---- Ribbon button handler (only manual insert)
 async function insertSignature(event) {
   try { await doInsertSignature(); }
   catch (err) { console.error('❌ insertSignature failed:', err); }
   finally { if (event && typeof event.completed === 'function') event.completed(); }
 }
 
-async function onNewCompose(event) {
-  try { await doInsertSignature(); }
-  catch (err) { console.error('❌ onNewCompose failed:', err); }
-  finally { if (event && typeof event.completed === 'function') event.completed(); }
-}
-
-// ---- Expose and associate only after Office is ready
+// ---- Expose only the manual insert handler
 Office.onReady(() => {
-  console.log('Autorun runtime loaded:', Office.context.platform);
+  console.log('Add-in loaded (button-only)');
   window.insertSignature = insertSignature;
-  window.onNewCompose = onNewCompose;
-  try { Office.actions.associate('onNewCompose', onNewCompose); } catch (e) { /* already bound */ }
+  // No autorun, no event association
 });
 
 // Optional legacy no-op

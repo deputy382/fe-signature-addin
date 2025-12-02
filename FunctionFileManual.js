@@ -145,15 +145,17 @@ async function buildSignatureHtml() {
   const phoneLine = (officePhone || mobile)
     ? `office: ${officePhone}${mobile ? ' &nbsp;&nbsp; cell: ' + mobile : ''}` : '';
 
-  const sig = `
-    <div style="font-family:'Segoe UI', Arial, sans-serif; font-size:12px; line-height:1.35;">
-      <div style="font-size:13px; font-weight:600; color:#000;">${name}</div>
-      ${title ? `<div style="color:#000;">${title}</div>` : ''}
-      ${phoneLine ? `<div style="color:#000;">${phoneLine}</div>` : ''}
-      ${email ? `<div>mailto:${email}${email}</a></div>` : ''}
-      ${officeLoc ? `<div style="color:#000;">${officeLoc}</div>` : ''}
-    </div>
-  `.trim();
+const sig = `
+<div style="font-family:'Segoe UI', Arial, sans-serif; font-size:12px; color:#333; line-height:1.5;">
+  <div style="font-size:14px; font-weight:bold; color:#000;">${name}</div>
+  ${title ? `<div style="margin-bottom:4px;">${title}</div>` : ''}
+  ${phoneLine ? `<div style="margin-bottom:4px;">${phoneLine}</div>` : ''}
+  ${email ? `<div><a href="mailto:${email}" style="color:#0078D4; text-decorationstyle="margin-top:4px;">${officeLoc}</div>` : ''}
+  <hr style="border:none; border-top:1px solid #ccc; margin:8px 0;">
+  <div style="font-size:11px; color:#666;">FirstEnergy Corp | Confidential</div>
+</div>
+`.trim();
+
 
   return (SIG_COMMENT + '\n' + sig).trim();
 }

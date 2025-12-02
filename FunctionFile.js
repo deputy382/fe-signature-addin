@@ -89,17 +89,18 @@ function insertBelowReplyHeader(html, sigHtml) {
   return html + '\n' + sigHtml;
 }
 
+/**
+ * Build a generic, unmistakable signature placeholder.
+ * Keeps the marker comment so duplicate insertion is prevented.
+ */
 function buildSignatureHtml() {
-  const lines = [
-    '<div style="font-family:\'Segoe UI\', Arial, sans-serif; font-size:12px; line-height:1.35;">',
-    '<div style="font-size:13px; font-weight:600; color:#000;">Shane Francis</div>',
-    '<div style="color:#000;">Systems Administrator B IV</div>',
-    '<div style="color:#000;">office: 850-2601 cell: 330-323-8382</div>',
-    '<div>mailto:sfrancis@firstenergycorp.com</div>',
-    '<div style="color:#000;">341 White Pond Drive, Akron, OH 44320 mailstop: A-FEHQ-A2 / Akron FirstEnergy HQ</div>',
-    '</div>'
-  ];
-  return (SIG_COMMENT + '\n' + lines.join('\n')).trim();
+  const sig = `
+    <div style="font-family:'Segoe UI', Arial, sans-serif; font-size:12px; line-height:1.35; color:#000;">
+      <div style="font-size:14px; font-weight:600;">Signature would be added</div>
+    </div>
+  `.trim();
+  // Prepend marker so idempotence checks still work
+  return (SIG_COMMENT + '\n' + sig).trim();
 }
 
 async function doInsertSignature() {
